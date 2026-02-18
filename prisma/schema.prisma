@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model GasPlant {
+  id                   String  @id @default(cuid())
+  eiaPlantCode         Int     @unique @map("eia_plant_code")
+  plantName            String  @map("plant_name")
+  operatorName         String? @map("operator_name")
+  state                String
+  county               String?
+  latitude             Float
+  longitude            Float
+
+  // Capacity
+  nameplateCapacityMw  Float   @map("nameplate_capacity_mw")
+  summerCapacityMw     Float?  @map("summer_capacity_mw")
+  winterCapacityMw     Float?  @map("winter_capacity_mw")
+  ctCapacityMw         Float?  @map("ct_capacity_mw")
+  ccgtCapacityMw       Float?  @map("ccgt_capacity_mw")
+
+  // Operations (from EIA-923)
+  capacityFactor       Float?  @map("capacity_factor")
+  ctCapacityFactor     Float?  @map("ct_capacity_factor")
+  ccgtCapacityFactor   Float?  @map("ccgt_capacity_factor")
+  annualGenMwh         Float?  @map("annual_gen_mwh")
+  heatRateBtuKwh       Float?  @map("heat_rate_btu_kwh")
+  variableCostCt       Float?  @map("variable_cost_ct")
+  variableCostCcgt     Float?  @map("variable_cost_ccgt")
+
+  // Classification
+  primeMover           String  @map("prime_mover")
+  operatingStatus      String  @map("operating_status")
+  demandRegion         String? @map("demand_region")
+  balancingAuthority   String? @map("balancing_authority")
+  nercRegion           String? @map("nerc_region")
+
+  // Solar potential
+  solarPotentialMw     Float?  @map("solar_potential_mw")
+  solarCf              Float?  @map("solar_cf")
+
+  // Pre-computed LCOEs
+  lcoeHybrid           Float?  @map("lcoe_hybrid")
+  lcoeGasOnly          Float?  @map("lcoe_gas_only")
+
+  // Nearby data centers count (denormalized)
+  nearbyDcCount        Int     @default(0) @map("nearby_dc_count")
+
+  // EIA data years
+  eia860Year           Int?    @map("eia_860_year")
+  eia923Year           Int?    @map("eia_923_year")
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  solarProfiles        SolarProfile[]
+  optimizationResults  OptimizationResult[]
+
+  @@map("gas_plants")
+  @@index([state])
+  @@index([demandRegion])
+  @@index([primeMover])
+  @@index([nameplateCapacityMw])
+}
+
+model DataCenter {
+  id              String  @id @default(cuid())
+  name            String
+  operator        String?
+  status          String?   // "operational", "under_construction", "planned"
+  latitude        Float
+  longitude       Float
+  capacityMw      Float?  @map("capacity_mw")          // Total campus power capacity (MW)
+  itLoadMw        Float?  @map("it_load_mw")            // IT load capacity (MW)
+  completionYear  Int?    @map("completion_year")        // Year of completion / expected online
+  campusSqft      Int?    @map("campus_sqft")            // Gross campus area in sq ft
+  phase           String? // e.g. "Phase 1", "Expansion"
+  source          String?
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("data_centers")
+}
+
+model NuclearPlant {
+  id            String  @id @default(cuid())
+  name          String
+  facilityType  String  @map("facility_type")   // "operating", "restart", "coal_to_nuclear", "legacy"
+  status        String                            // "Operating", "Restart Candidate", "Planned", "Decommissioned", etc.
+  capacityMw    Float   @map("capacity_mw")
+  region        String?                           // ISO/RTO region
+  state         String?
+  latitude      Float
+  longitude     Float
+  operator      String?
+  notes         String?
+  sourceUrl     String? @map("source_url")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("nuclear_plants")
+  @@index([facilityType])
+  @@index([state])
+}
+
+model SolarProfile {
+  id          String   @id @default(cuid())
+  plantId     String   @map("plant_id")
+  plant       GasPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  hour        Int
+  cf          Float
+
+  @@map("solar_profiles")
+  @@unique([plantId, hour])
+  @@index([plantId])
+}
+
+model SystemDemand {
+  id        String   @id @default(cuid())
+  region    String
+  hour      Int
+  demandMw  Float    @map("demand_mw")
+  year      Int      @default(2023)
+
+  @@map("system_demand")
+  @@unique([region, year, hour])
+  @@index([region])
+}
+
+model CostAssumption {
+  id                  String @id @default(cuid())
+  scenario            String
+  commissioningYear   Int    @map("commissioning_year")
+  solarCapexPerKw     Float  @map("solar_capex_per_kw")
+  batteryCapexPerKwh  Float  @map("battery_capex_per_kwh")
+  batteryCapexPerKw   Float  @map("battery_capex_per_kw")
+  solarOmPerKwYear    Float  @map("solar_om_per_kw_year")
+  batteryOmPerKwYear  Float  @map("battery_om_per_kw_year")
+  wacc                Float
+  crf                 Float
+  projectLifetimeYrs  Int    @map("project_lifetime_yrs")
+  batteryRte          Float  @default(0.85) @map("battery_rte")
+  inverterEfficiency  Float  @default(0.96) @map("inverter_efficiency")
+  maxBatteryDuration  Float  @default(6) @map("max_battery_duration")
+
+  @@map("cost_assumptions")
+  @@unique([scenario, commissioningYear])
+}
+
+model OptimizationResult {
+  id                String   @id @default(cuid())
+  plantId           String   @map("plant_id")
+  plant             GasPlant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  targetLoadMw      Float    @map("target_load_mw")
+  maxGasBackupPct   Float    @map("max_gas_backup_pct")
+  costScenario      String   @map("cost_scenario")
+  conflictPct       Float?   @map("conflict_pct")
+
+  solarCapacityMw   Float    @map("solar_capacity_mw")
+  batteryPowerMw    Float    @map("battery_power_mw")
+  batteryEnergyMwh  Float    @map("battery_energy_mwh")
+  netLcoe           Float    @map("net_lcoe")
+  gasBackupActual   Float    @map("gas_backup_actual")
+  emissionsFactor   Float?   @map("emissions_factor")
+  excessSolarMwh    Float?   @map("excess_solar_mwh")
+  solarToLoadRatio  Float?   @map("solar_to_load_ratio")
+  conflictHours     Int?     @map("conflict_hours")
+  solverStatus      String   @map("solver_status")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("optimization_results")
+  @@index([plantId])
+}
