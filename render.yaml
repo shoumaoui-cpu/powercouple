@@ -13,11 +13,11 @@ services:
     plan: free
     autoDeploy: true
     buildCommand: npm ci && npx prisma generate && npm run build
-    startCommand: npm run start
+    startCommand: npx prisma db push && npm run db:seed && npm run start
     envVars:
       - key: NODE_VERSION
         value: 20
       - key: FASTAPI_URL
         value: https://powercouple-api.onrender.com
       - key: DATABASE_URL
-        value: file:./prisma/dev.db
+        value: file:/tmp/powercouple.db
