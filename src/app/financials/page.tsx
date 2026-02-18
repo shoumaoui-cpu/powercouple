@@ -8,7 +8,7 @@ import { createFinancialsStore, FinancialsStoreContext, FinancialsStoreType } fr
 // ─── Provider Wrapper ───────────────────────────────────────────────
 
 function FinancialsStoreProvider({ children }: { children: ReactNode }) {
-    const storeRef = useRef<FinancialsStoreType>();
+    const storeRef = useRef<FinancialsStoreType | null>(null);
     if (!storeRef.current) {
         storeRef.current = createFinancialsStore();
     }
